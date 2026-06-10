@@ -1,0 +1,10 @@
+# /etc/udev/rules.d/99-lora.rules
+#
+# TTGO 시리얼 포트 고정
+# 적용: sudo cp 99-lora.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules
+#
+# serial 값 확인 방법:
+#   udevadm info -a -n /dev/ttyUSB0 | grep serial
+
+# 서버용 TTGO (수신 전용) — serial 값을 실제 값으로 교체
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{serial}=="REPLACE_SERVER_SERIAL", SYMLINK+="lora_server"

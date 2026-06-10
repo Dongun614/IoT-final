@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>관제 대시보드</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+KR:wght@300;400;500;700&family=Space+Grotesk:wght@400;600;700&display=swap');
+
+:root {
+  --bg:       #0E1117;
+  --bg2:      #161B26;
+  --bg3:      #1E2535;
+  --border:   #2A3348;
+  --accent:   #4FFFB0;
+  --wifi:     #3B82F6;
+  --warning:  #F59E0B;
+  --normal:   #22C55E;
+  --lora:     #4FFFB0;
+  --danger:   #EF4444;
+  --text:     #E2E8F0;
+  --text2:    #94A3B8;
+  --text3:    #64748B;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans KR', sans-serif;
+  font-weight: 300;
+  font-size: 14px;
+  min-height: 100vh;
+}
+
+/* ── 상단 헤더 ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.header-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-title::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+.ws-status {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--text3);
+  background: var(--bg3);
+  transition: all 0.3s;
+}
+.ws-status.connected    { color: var(--normal);  border-color: rgba(34,197,94,0.4); }
+.ws-status.disconnected { color: var(--danger);  border-color: rgba(239,68,68,0.4); }
+
+/* ── 레이아웃 ── */
+.container {
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1400px;
+}
+
+/* ── 로봇 카드 컨테이너 ── */
+#robot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+/* ── 로봇 카드 ── */
+.robot-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+.robot-card.state-normal  { border-top: 3px solid var(--normal); }
+.robot-card.state-warning { border-top: 3px solid var(--warning); }
+.robot-card.state-lora    { border-top: 3px solid var(--lora); }
+.robot-card.state-offline { border-top: 3px solid var(--text3); opacity: 0.6; }
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.robot-name {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+.state-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.08em;
+}
+.badge-normal  { background: rgba(34,197,94,0.15);  color: var(--normal);  border: 1px solid rgba(34,197,94,0.3); }
+.badge-warning { background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid rgba(245,158,11,0.3); }
+.badge-lora    { background: rgba(79,255,176,0.15); color: var(--lora);    border: 1px solid rgba(79,255,176,0.3); }
+.badge-offline { background: rgba(100,116,139,0.15); color: var(--text3);  border: 1px solid rgba(100,116,139,0.3); }
+
+/* ── 메트릭 그리드 ── */
+.metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+}
+.metric {
+  background: var(--bg2);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.metric-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.metric-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+.metric-value.good   { color: var(--normal); }
+.metric-value.warn   { color: var(--warning); }
+.metric-value.bad    { color: var(--danger); }
+.metric-unit {
+  font-size: 10px;
+  color: var(--text3);
+  font-weight: 400;
+}
+
+/* ── seq 손실 표시 ── */
+.card-footer {
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text3);
+}
+.seq-info { display: flex; align-items: center; gap: 6px; }
+.seq-loss { color: var(--danger); }
+.last-seen { color: var(--text3); }
+
+/* ── RSSI 바 ── */
+.rssi-bar-wrap {
+  padding: 0 18px 14px;
+}
+.rssi-bar-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.rssi-bar-track {
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.rssi-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s, background 0.5s;
+}
+
+/* ── 파라미터 패널 ── */
+.param-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+}
+.panel-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-title::before {
+  content: '//';
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.param-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.param-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+}
+.param-label span { color: var(--accent); font-size: 11px; }
+
+input[type=range] {
+  width: 100%;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg3);
+  outline: none;
+  cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(79,255,176,0.5);
+}
+input[type=number] {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input[type=number]:focus { border-color: var(--accent); }
+
+.send-btn {
+  background: rgba(79,255,176,0.1);
+  border: 1px solid rgba(79,255,176,0.3);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  align-self: flex-end;
+}
+.send-btn:hover {
+  background: rgba(79,255,176,0.2);
+  border-color: var(--accent);
+}
+.send-btn:active { transform: scale(0.97); }
+
+/* ── 로봇 선택 ── */
+.robot-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.robot-select-wrap label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text3);
+}
+select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  padding: 6px 10px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* ── 이벤트 로그 ── */
+.log-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+}
+.log-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.log-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.log-title::before { content: '//'; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text3); }
+.clear-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text3);
+  background: none;
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.clear-btn:hover { color: var(--text); border-color: var(--text3); }
+
+#log-list {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.log-entry {
+  padding: 5px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text2);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(42,51,72,0.4);
+}
+.log-entry:last-child { border-bottom: none; }
+.log-time  { color: var(--text3); flex-shrink: 0; }
+.log-msg.state-change { color: var(--warning); }
+.log-msg.lora-pkt     { color: var(--lora); }
+.log-msg.wifi-pkt     { color: var(--wifi); }
+.log-msg.cmd          { color: var(--accent); }
+.log-msg.error        { color: var(--danger); }
+
+/* ── 빈 상태 ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 2;
+}
+.empty-state .big { font-size: 32px; margin-bottom: 12px; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ── 헤더 ── -->
+<div class="header">
+  <div class="header-title">IoT 관제 대시보드</div>
+  <div id="ws-status" class="ws-status disconnected">WS 연결 끊김</div>
+</div>
+
+<div class="container">
+
+  <!-- ── 로봇 카드 그리드 ── -->
+  <div id="robot-grid">
+    <div class="empty-state">
+      <div class="big">📡</div>
+      WebSocket 연결 대기 중...<br>
+      서버에 로봇이 접속하면 여기에 표시됩니다.
+    </div>
+  </div>
+
+  <!-- ── 파라미터 원격 수정 패널 ── -->
+  <div class="param-panel">
+    <div class="panel-title">파라미터 원격 수정</div>
+
+    <div class="robot-select-wrap">
+      <label>대상 로봇</label>
+      <select id="target-robot"><option value="">— 선택 —</option></select>
+    </div>
+
+    <div class="param-grid">
+      <div class="param-row">
+        <div class="param-label">TX Power <span id="tx-val">14</span> dBm</div>
+        <input type="range" id="tx-power" min="2" max="20" value="14"
+               oninput="document.getElementById('tx-val').textContent=this.value">
+      </div>
+      <div class="param-row">
+        <div class="param-label">T1 RSSI <span id="t1-val">-65</span> dBm</div>
+        <input type="number" id="t1-rssi" value="-65" min="-90" max="-50">
+      </div>
+      <div class="param-row">
+        <div class="param-label">T2 RSSI <span id="t2-val">-80</span> dBm</div>
+        <input type="number" id="t2-rssi" value="-80" min="-100" max="-60">
+      </div>
+      <div class="param-row">
+        <div class="param-label">안정화 시간 <span></span> 초</div>
+        <input type="number" id="stable-sec" value="10" min="3" max="30">
+      </div>
+      <div class="param-row" style="justify-content: flex-end; padding-top: 8px;">
+        <button class="send-btn" onclick="sendCmd()">→ 전송</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 이벤트 로그 ── -->
+  <div class="log-panel">
+    <div class="log-header">
+      <div class="log-title">이벤트 로그</div>
+      <button class="clear-btn" onclick="clearLog()">clear</button>
+    </div>
+    <div id="log-list"></div>
+  </div>
+
+</div>
+
+<script>
+/* ─── 상태 ─────────────────────────────────────────────── */
+const WS_URL     = `ws://${location.hostname}:8765`;
+const STATE_NAME = ["NORMAL", "WARNING", "LORA_ONLY"];
+const STATE_CLS  = ["state-normal", "state-warning", "state-lora"];
+const BADGE_CLS  = ["badge-normal", "badge-warning", "badge-lora"];
+
+let ws       = null;
+let robots   = {};   // robot_id → { ...상태, prevSeq }
+let wsRetry  = 0;
+
+/* ─── WebSocket ─────────────────────────────────────────── */
+function connectWS() {
+  const statusEl = document.getElementById("ws-status");
+  statusEl.textContent = "연결 중...";
+  statusEl.className   = "ws-status";
+
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    wsRetry = 0;
+    statusEl.textContent = `WS 연결됨 · ${WS_URL}`;
+    statusEl.className   = "ws-status connected";
+    addLog("WebSocket 연결 성공", "cmd");
+  };
+
+  ws.onclose = () => {
+    statusEl.textContent = "WS 연결 끊김";
+    statusEl.className   = "ws-status disconnected";
+    addLog("WebSocket 연결 끊김. 재연결 중...", "error");
+    const delay = Math.min(1000 * 2 ** wsRetry, 16000);
+    wsRetry++;
+    setTimeout(connectWS, delay);
+  };
+
+  ws.onerror = () => {
+    addLog("WebSocket 오류", "error");
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === "status")   handleStatus(msg.data);
+      if (msg.type === "snapshot") handleSnapshot(msg.data);
+    } catch {}
+  };
+}
+
+/* ─── 스냅샷 (첫 접속 시 기존 상태 수신) ── */
+function handleSnapshot(data) {
+  Object.values(data).forEach(d => handleStatus(d));
+  addLog(`스냅샷 수신 — 로봇 ${Object.keys(data).length}대`, "cmd");
+}
+
+/* ─── 상태 업데이트 ─────────────────────────────────────── */
+function handleStatus(d) {
+  const id  = d.robot_id;
+  const prev = robots[id];
+
+  // 상태 전환 감지
+  if (prev && prev.state !== d.state) {
+    addLog(
+      `robot ${id}: ${STATE_NAME[prev.state] ?? '?'} → ${STATE_NAME[d.state] ?? '?'}`,
+      "state-change"
+    );
+  }
+
+  // seq 손실 감지
+  let lossCount = 0;
+  if (prev && d.seq > prev.seq + 1) {
+    lossCount = d.seq - prev.seq - 1;
+    addLog(`robot ${id}: seq 손실 감지 (${prev.seq}→${d.seq}, ${lossCount}개)`, "error");
+  }
+
+  // LoRa 패킷 로그
+  if (d.state === 2) {
+    addLog(`robot ${id} [LoRa] seq=${d.seq} lora_rssi=${d.lora_rssi} snr=${d.lora_snr}`, "lora-pkt");
+  }
+
+  robots[id] = { ...d, lossCount };
+  renderRobot(id);
+  updateTargetSelect();
+}
+
+/* ─── 카드 렌더링 ────────────────────────────────────────── */
+function renderRobot(id) {
+  const d = robots[id];
+  const state = d.state ?? 0;
+  const cardId = `robot-card-${id}`;
+
+  let card = document.getElementById(cardId);
+  const isNew = !card;
+
+  if (isNew) {
+    card = document.createElement("div");
+    card.id = cardId;
+    card.className = "robot-card";
+
+    // 빈 상태 제거
+    const empty = document.querySelector(".empty-state");
+    if (empty) empty.remove();
+
+    document.getElementById("robot-grid").appendChild(card);
+  }
+
+  /* RSSI 바 계산 (-100 ~ -30 → 0~100%) */
+  const rssiPct = Math.max(0, Math.min(100, (d.wifi_rssi + 100) / 70 * 100));
+  const rssiColor = d.wifi_rssi > -65 ? "var(--normal)"
+                  : d.wifi_rssi > -80 ? "var(--warning)"
+                  : "var(--danger)";
+
+  const loraRssiPct = Math.max(0, Math.min(100, (d.lora_rssi + 120) / 90 * 100));
+  const loraColor = d.lora_rssi > -90 ? "var(--lora)" : "var(--warning)";
+
+  /* RSSI 색상 클래스 */
+  const rssiCls = d.wifi_rssi > -65 ? "good" : d.wifi_rssi > -80 ? "warn" : "bad";
+
+  /* 마지막 수신 */
+  const nowSec = Math.floor(Date.now() / 1000);
+  const ageSec = nowSec - d.ts;
+  const ageStr = ageSec < 5  ? "방금" :
+                 ageSec < 60 ? `${ageSec}초 전` :
+                 `${Math.floor(ageSec/60)}분 전`;
+
+  card.className = `robot-card ${STATE_CLS[state] ?? "state-offline"}`;
+  card.innerHTML = `
+    <div class="card-header">
+      <div class="robot-name">🤖 Robot ${id}</div>
+      <span class="state-badge ${BADGE_CLS[state] ?? "badge-offline"}">
+        ${STATE_NAME[state] ?? "OFFLINE"}
+      </span>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">Wi-Fi RSSI</div>
+        <div class="metric-value ${rssiCls}">${d.wifi_rssi}<span class="metric-unit"> dBm</span></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">LoRa RSSI</div>
+        <div class="metric-value ${d.lora_rssi > -90 ? 'good' : 'warn'}">
+          ${d.lora_rssi ?? '--'}<span class="metric-unit"> dBm</span>
+        </div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">온도</div>
+        <div class="metric-value">${d.temp?.toFixed(1) ?? '--'}<span class="metric-unit"> °C</span></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">LoRa SNR</div>
+        <div class="metric-value">${d.lora_snr ?? '--'}<span class="metric-unit"> dB</span></div>
+      </div>
+    </div>
+
+    <div class="rssi-bar-wrap">
+      <div class="rssi-bar-label">Wi-Fi 신호 강도</div>
+      <div class="rssi-bar-track">
+        <div class="rssi-bar-fill" style="width:${rssiPct.toFixed(1)}%;background:${rssiColor}"></div>
+      </div>
+    </div>
+    <div class="rssi-bar-wrap" style="padding-top:0">
+      <div class="rssi-bar-label">LoRa 신호 강도</div>
+      <div class="rssi-bar-track">
+        <div class="rssi-bar-fill" style="width:${loraRssiPct.toFixed(1)}%;background:${loraColor}"></div>
+      </div>
+    </div>
+
+    <div class="card-footer">
+      <div class="seq-info">
+        <span>seq ${d.seq}</span>
+        ${d.lossCount > 0 ? `<span class="seq-loss">▲ ${d.lossCount} 손실</span>` : ''}
+      </div>
+      <span class="last-seen">${ageStr}</span>
+    </div>
+  `;
+}
+
+/* ─── 로봇 선택 드롭다운 업데이트 ── */
+function updateTargetSelect() {
+  const sel = document.getElementById("target-robot");
+  const cur = sel.value;
+  const ids = Object.keys(robots).map(Number).sort();
+
+  sel.innerHTML = `<option value="">— 선택 —</option>` +
+    ids.map(id => `<option value="${id}" ${id == cur ? "selected" : ""}>Robot ${id}</option>`).join("");
+}
+
+/* ─── 커맨드 전송 ────────────────────────────────────────── */
+function sendCmd() {
+  const id = document.getElementById("target-robot").value;
+  if (!id) { alert("로봇을 선택하세요."); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) { alert("WebSocket 연결이 없습니다."); return; }
+
+  const payload = {
+    tx_power:   parseInt(document.getElementById("tx-power").value),
+    t1_rssi:    parseInt(document.getElementById("t1-rssi").value),
+    t2_rssi:    parseInt(document.getElementById("t2-rssi").value),
+    stable_sec: parseInt(document.getElementById("stable-sec").value),
+  };
+
+  ws.send(JSON.stringify({ type: "cmd", robot_id: parseInt(id), payload }));
+  addLog(`→ Robot ${id} CMD 전송: ${JSON.stringify(payload)}`, "cmd");
+}
+
+/* ─── 이벤트 로그 ─────────────────────────────────────────── */
+const MAX_LOG = 100;
+function addLog(msg, cls = "") {
+  const list = document.getElementById("log-list");
+  const now  = new Date().toLocaleTimeString("ko-KR", { hour12: false });
+
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+  entry.innerHTML = `<span class="log-time">${now}</span><span class="log-msg ${cls}">${msg}</span>`;
+  list.prepend(entry);
+
+  // 최대 항목 수 유지
+  while (list.children.length > MAX_LOG) list.removeChild(list.lastChild);
+}
+
+function clearLog() {
+  document.getElementById("log-list").innerHTML = "";
+}
+
+/* ─── 시작 ── */
+connectWS();
+
+/* 마지막 수신 시각 갱신 (5초마다) */
+setInterval(() => {
+  Object.keys(robots).forEach(id => renderRobot(parseInt(id)));
+}, 5000);
+</script>
+</body>
+</html>
