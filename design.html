@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wi-Fi / LoRa 하이브리드 프로토콜 설계 문서</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+KR:wght@300;400;500;700&family=Space+Grotesk:wght@400;600;700&display=swap');
+
+  :root {
+    --bg:        #0E1117;
+    --bg2:       #161B26;
+    --bg3:       #1E2535;
+    --border:    #2A3348;
+    --accent:    #4FFFB0;
+    --accent2:   #3B82F6;
+    --accent3:   #F59E0B;
+    --warn:      #F97316;
+    --text:      #E2E8F0;
+    --text2:     #94A3B8;
+    --text3:     #64748B;
+    --wifi:      #3B82F6;
+    --lora:      #4FFFB0;
+    --warning:   #F59E0B;
+    --normal:    #22C55E;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    font-weight: 300;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* ── 사이드바 ── */
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 220px; height: 100vh;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 24px 0;
+    z-index: 100;
+  }
+  .sidebar-logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .sidebar-logo span {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .sidebar nav a {
+    display: block;
+    padding: 7px 20px;
+    color: var(--text2);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 400;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+  }
+  .sidebar nav a:hover {
+    color: var(--text);
+    border-left-color: var(--accent);
+    background: var(--bg3);
+  }
+  .sidebar nav .nav-section {
+    padding: 12px 20px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--text3);
+    text-transform: uppercase;
+  }
+
+  /* ── 메인 ── */
+  .main {
+    margin-left: 220px;
+    padding: 48px 56px;
+    max-width: 960px;
+  }
+
+  /* ── 헤더 ── */
+  .hero {
+    padding: 48px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+  .hero-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 16px;
+    color: #fff;
+  }
+  .hero h1 span { color: var(--accent); }
+  .hero-desc {
+    color: var(--text2);
+    font-size: 15px;
+    max-width: 600px;
+    line-height: 1.8;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 24px;
+  }
+  .hero-meta-item {
+    font-size: 12px;
+    color: var(--text3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .hero-meta-item span { color: var(--text2); }
+
+  /* ── 섹션 ── */
+  section {
+    margin-bottom: 64px;
+    scroll-margin-top: 32px;
+  }
+  .section-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 24px 0 12px;
+  }
+  p { color: var(--text2); margin-bottom: 12px; }
+
+  /* ── 카드 ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .card p { font-size: 13px; margin: 0; }
+
+  /* ── 노드 그리드 ── */
+  .node-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin: 20px 0;
+  }
+  .node-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .node-card.wifi  { border-top: 3px solid var(--wifi); }
+  .node-card.lora  { border-top: 3px solid var(--lora); }
+  .node-card.mixed { border-top: 3px solid var(--warning); }
+  .node-card.ctrl  { border-top: 3px solid var(--text3); }
+  .node-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #fff;
+  }
+  .node-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text2);
+    padding: 5px 8px;
+    background: var(--bg3);
+    border-radius: 4px;
+    margin-bottom: 6px;
+  }
+  .node-lang {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: var(--bg3);
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+
+  /* ── 흐름도 ── */
+  .flow {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 2;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .flow .hl  { color: var(--accent); }
+  .flow .hl2 { color: var(--wifi); }
+  .flow .hl3 { color: var(--warning); }
+
+  /* ── FSM 상태 박스 ── */
+  .fsm-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    margin: 20px 0;
+  }
+  .fsm-state {
+    width: 100%;
+    max-width: 520px;
+    border-radius: 10px;
+    padding: 18px 24px;
+    border: 1px solid var(--border);
+  }
+  .fsm-state.s-normal  { background: rgba(34,197,94,0.08);  border-color: rgba(34,197,94,0.3); }
+  .fsm-state.s-warning { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.3); }
+  .fsm-state.s-lora    { background: rgba(79,255,176,0.08); border-color: rgba(79,255,176,0.3); }
+  .fsm-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .fsm-state.s-normal  .fsm-title { color: var(--normal); }
+  .fsm-state.s-warning .fsm-title { color: var(--warning); }
+  .fsm-state.s-lora    .fsm-title { color: var(--lora); }
+  .fsm-detail { font-size: 12px; color: var(--text2); }
+  .fsm-detail li { margin-bottom: 3px; list-style: none; padding-left: 14px; position: relative; }
+  .fsm-detail li::before { content: '→'; position: absolute; left: 0; color: var(--text3); }
+  .fsm-arrow {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text3);
+    font-family: 'JetBrains Mono', monospace;
+    padding: 6px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .fsm-arrow .cond {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+    color: var(--warn);
+  }
+
+  /* ── 표 ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+  th {
+    background: var(--bg3);
+    color: var(--text2);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text2);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg3); }
+  .tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .tag-wifi    { background: rgba(59,130,246,0.15); color: var(--wifi); }
+  .tag-lora    { background: rgba(79,255,176,0.15); color: var(--lora); }
+  .tag-c       { background: rgba(249,115,22,0.15); color: var(--warn); }
+  .tag-py      { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .tag-ard     { background: rgba(148,163,184,0.15); color: var(--text2); }
+
+  /* ── 우려사항 ── */
+  .concern-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .concern-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .concern-card.resolved { border-left: 3px solid var(--normal); }
+  .concern-card.pending  { border-left: 3px solid var(--warning); }
+  .concern-card.measure  { border-left: 3px solid var(--accent2); }
+  .concern-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    margin-bottom: 4px;
+  }
+  .concern-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .concern-desc { font-size: 12px; color: var(--text2); line-height: 1.6; }
+  .concern-resolve {
+    margin-top: 8px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--normal);
+  }
+  .concern-card.pending .concern-resolve { color: var(--warning); }
+  .concern-card.measure .concern-resolve { color: var(--accent2); }
+
+  /* ── 페이로드 ── */
+  .payload-visual {
+    display: flex;
+    gap: 2px;
+    margin: 16px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  .pf {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border-radius: 4px;
+    padding: 8px 4px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .pf-name { color: var(--accent); font-size: 10px; }
+  .pf-size { color: var(--text3); font-size: 9px; margin-top: 3px; }
+  .pf.wide { flex: 3; }
+  .pf.med  { flex: 2; }
+  .pf.sm   { flex: 1; }
+
+  /* ── 코드블록 ── */
+  .code-block {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.8;
+    overflow-x: auto;
+    margin: 12px 0;
+  }
+  .code-block .kw  { color: #C678DD; }
+  .code-block .fn  { color: #61AFEF; }
+  .code-block .st  { color: #98C379; }
+  .code-block .cm  { color: var(--text3); }
+  .code-block .nm  { color: #E5C07B; }
+
+  /* ── MQTT 토픽 ── */
+  .topic-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .topic-path { color: var(--accent); flex: 1; }
+  .topic-desc { color: var(--text2); font-size: 11px; }
+  .topic-who  { color: var(--text3); font-size: 10px; }
+
+  /* ── 스크롤바 ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg2); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ── 사이드바 ── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <span>설계 문서 v1.0</span>
+  </div>
+  <nav>
+    <div class="nav-section">개요</div>
+    <a href="#overview">프로젝트 개요</a>
+    <a href="#architecture">전체 아키텍처</a>
+
+    <div class="nav-section">설계</div>
+    <a href="#fsm">FSM 상태 머신</a>
+    <a href="#payload">페이로드 포맷</a>
+    <a href="#mqtt">MQTT 토픽 구조</a>
+    <a href="#csma">CSMA/CA</a>
+
+    <div class="nav-section">구현</div>
+    <a href="#stack">기술 스택</a>
+    <a href="#ttgo">TTGO 펌웨어</a>
+    <a href="#rpi">RPi 클라이언트</a>
+    <a href="#server">서버 구조</a>
+    <a href="#dashboard">관제 대시보드</a>
+
+    <div class="nav-section">기타</div>
+    <a href="#concerns">우려사항</a>
+    <a href="#todo">실측 항목</a>
+  </nav>
+</aside>
+
+<!-- ── 메인 ── -->
+<main class="main">
+
+  <!-- 히어로 -->
+  <div class="hero">
+    <div class="hero-tag">// FINAL PROJECT — IoT Network Protocol</div>
+    <h1>Wi-Fi / LoRa<br><span>하이브리드 프로토콜</span></h1>
+    <p class="hero-desc">다중 로봇 환경에서 Wi-Fi와 LoRa를 RSSI 기반 FSM으로 자동 전환하는 하이브리드 통신 프로토콜 설계 및 구현 방안</p>
+    <div class="hero-meta">
+      <div class="hero-meta-item">팀 구성 <span>2~3인</span></div>
+      <div class="hero-meta-item">발표 <span>16주차 수요일</span></div>
+      <div class="hero-meta-item">분류 <span>IoT / Network</span></div>
+    </div>
+  </div>
+
+  <!-- 1. 프로젝트 개요 -->
+  <section id="overview">
+    <div class="section-tag">// 01</div>
+    <h2>프로젝트 개요</h2>
+    <p>다중 로봇이 운용되는 환경에서 Wi-Fi 커버리지가 불안정한 구간이 발생할 때, 통신 단절 없이 LoRa로 자동 전환하고 복귀하는 하이브리드 프로토콜을 설계한다.</p>
+    <p>핵심은 <strong>프로토콜 전환의 투명성</strong>이다. 관제 서버는 로봇이 어떤 프로토콜을 쓰는지 관계없이 동일한 토픽 구조로 데이터를 수신한다.</p>
+
+    <h3>핵심 목표</h3>
+    <div class="card">
+      <div class="card-title" style="color:var(--accent)">① 전환 순간 데이터 손실 최소화</div>
+      <p>버퍼링 + WARNING 구간 이중 채널로 전환 순간 패킷 손실 방지</p>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--wifi)">② Ping-pong 현상 방지</div>
+      <p>안정화 조건(일정 시간 RSSI 유지)을 만족해야만 채널 전환 확정</p>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--warning)">③ 관제 투명성</div>
+      <p>Protocol Adapter로 정규화 — 관제 코드는 프로토콜 변경 없이 동작</p>
+    </div>
+  </section>
+
+  <!-- 2. 전체 아키텍처 -->
+  <section id="architecture">
+    <div class="section-tag">// 02</div>
+    <h2>전체 아키텍처</h2>
+    <p>3개의 물리적 노드로 구성된다.</p>
+
+    <div class="node-grid">
+      <div class="node-card wifi">
+        <div class="node-title">🤖 로봇 RPi</div>
+        <div class="node-item">Wi-Fi 내장</div>
+        <div class="node-item">TTGO (USB 시리얼)</div>
+        <div class="node-item">FSM + RSSI 모니터링</div>
+        <div class="node-item">libmosquitto publish</div>
+        <div class="node-item">termios UART 제어</div>
+        <span class="node-lang">C + Arduino C++</span>
+      </div>
+      <div class="node-card mixed">
+        <div class="node-title">🖥️ 서버 PC</div>
+        <div class="node-item">Mosquitto 브로커</div>
+        <div class="node-item">TTGO 수신용 (USB 시리얼)</div>
+        <div class="node-item">LoRa → MQTT 브리지 (C)</div>
+        <div class="node-item">MQTT → WebSocket (Python)</div>
+        <div class="node-item">Protocol Adapter + dedup</div>
+        <span class="node-lang">C + Python</span>
+      </div>
+      <div class="node-card ctrl">
+        <div class="node-title">📊 관제 PC</div>
+        <div class="node-item">브라우저 (HTML/JS)</div>
+        <div class="node-item">WebSocket 수신</div>
+        <div class="node-item">RSSI / SNR 모니터링</div>
+        <div class="node-item">FSM 상태 확인</div>
+        <div class="node-item">파라미터 원격 수정</div>
+        <span class="node-lang">HTML / JS</span>
+      </div>
+    </div>
+
+    <h3>데이터 흐름</h3>
+    <div class="flow"><span class="hl2">[ Wi-Fi 경로 ]</span>
+로봇 RPi (C)
+  └─ libmosquitto publish("robot/A/status", payload)
+       └─ Wi-Fi ──▶ Mosquitto (서버 PC, localhost:1883)
+                         └─ Python subscribe
+                              └─ WebSocket ──▶ 관제 브라우저
+
+<span class="hl">[ LoRa 경로 ]</span>
+로봇 RPi (C)
+  └─ UART write (termios) ──▶ TTGO 로봇 (Arduino C++)
+                                   └─ LoRa RF ──▶ TTGO 서버 (수신 전용)
+                                                       └─ UART read
+                                                            └─ C 브리지
+                                                                 └─ libmosquitto publish
+                                                                      └─ Mosquitto
+                                                                           └─ Python subscribe
+                                                                                └─ WebSocket ──▶ 관제 브라우저
+
+<span class="hl3">[ 관제 커맨드 역방향 ]</span>
+관제 브라우저 (슬라이더/입력)
+  └─ WebSocket ──▶ Python
+                      └─ MQTT publish("robot/A/cmd", {tx_power:15})
+                              └─ Mosquitto ──▶ 로봇 RPi subscribe
+                                                   └─ UART ──▶ TTGO LoRa.setTxPower()</div>
+
+    <h3>서버 내부 프로세스 분리</h3>
+    <p>두 프로세스가 Mosquitto를 경계로 깔끔하게 분리된다. 언어 경계가 프로세스 내부가 아니라 Mosquitto 브로커에서 나뉘므로 각 프로세스를 독립적으로 재시작 가능하다.</p>
+    <div class="flow"><span class="hl">[ C 브리지 프로세스 ]</span>                    <span class="hl2">[ Python 프로세스 ]</span>
+UART 수신 (서버 TTGO)              paho-mqtt subscribe robot/+/status
+  └─ robot_id 파싱                   └─ dedup (robot_id + seq, 200ms)
+       └─ 토픽 구성                        └─ WebSocket broadcast
+            └─ libmosquitto publish              └─ 관제 브라우저
+                 └─▶ <span class="hl3">Mosquitto (localhost)</span> ◀─┘</div>
+  </section>
+
+  <!-- 3. FSM -->
+  <section id="fsm">
+    <div class="section-tag">// 03</div>
+    <h2>FSM 상태 머신 (로봇 RPi)</h2>
+    <p>로봇 RPi에서 C로 구현되는 핵심 로직. RSSI를 주기적으로 샘플링하여 3개 상태 간 전환을 결정한다.</p>
+
+    <div class="fsm-wrap">
+      <div class="fsm-state s-normal">
+        <div class="fsm-title">🟢 NORMAL</div>
+        <ul class="fsm-detail">
+          <li>Wi-Fi로 데이터 송수신 (libmosquitto publish)</li>
+          <li>LoRa (TTGO) Sleep 상태 유지</li>
+          <li>RSSI &gt; T1 조건 유지 (예: −65 dBm)</li>
+          <li>버퍼 비움 확인</li>
+        </ul>
+      </div>
+      <div class="fsm-arrow">
+        <div class="cond">T2 &lt; RSSI ≤ T1 → WARNING 진입</div>
+        <div style="color:var(--text3)">↕ 안정화 조건 충족 시 복귀</div>
+      </div>
+      <div class="fsm-state s-warning">
+        <div class="fsm-title">⚠️ WARNING (핑퐁 방지 구간)</div>
+        <ul class="fsm-detail">
+          <li>Wi-Fi 살아있으면 → Wi-Fi로 전송, LoRa 대기 (전송 안 함)</li>
+          <li>Wi-Fi 끊기면 → LoRa로 전송, Wi-Fi 재연결 시도 계속</li>
+          <li>Wi-Fi 재연결 성공해도 → 안정화 조건 충족 전까지 대기</li>
+          <li>안정화 조건: N초 동안 RSSI 샘플 M개 중 K개 이상 T1 이상</li>
+          <li>초기값 예시: 10초 / 20샘플 / 15개 이상 / −65 dBm (실측 조정)</li>
+          <li>이 구간에서 Wi-Fi + LoRa 중복 수신 가능 → 서버 dedup 처리</li>
+        </ul>
+      </div>
+      <div class="fsm-arrow">
+        <div class="cond">RSSI &lt; T2 OR 완전 끊김 → LORA ONLY</div>
+        <div style="color:var(--text3)">↕ Wi-Fi 비콘 감지 + Handshake 완료 시 복귀</div>
+      </div>
+      <div class="fsm-state s-lora">
+        <div class="fsm-title">📡 LORA ONLY</div>
+        <ul class="fsm-detail">
+          <li>LoRa로만 데이터 전송</li>
+          <li>Wi-Fi 모듈 비활성 (전력 절감)</li>
+          <li>백그라운드에서 Wi-Fi 비콘 주기적 스캔</li>
+          <li>비콘 감지 → 재연결 시도 → Handshake 완료 → WARNING 복귀</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>버퍼링</h3>
+    <div class="card">
+      <p>전환 순간 전송하지 못한 패킷을 메모리 큐에 보관한다. 새 채널 연결 확정 후 seq 번호 순서대로 flush한다. seq 번호가 있으므로 서버에서 순서 복원 및 손실 감지가 가능하다.</p>
+    </div>
+
+    <h3>임계값 (T1, T2)</h3>
+    <table>
+      <thead><tr><th>파라미터</th><th>초기 예시값</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td>T1 (NORMAL ↔ WARNING)</td><td>−65 dBm</td><td>실측 필수</td></tr>
+        <tr><td>T2 (WARNING → LORA)</td><td>−80 dBm</td><td>실측 필수</td></tr>
+        <tr><td>안정화 시간</td><td>10초</td><td>실측 조정</td></tr>
+        <tr><td>안정화 샘플 수</td><td>20개 중 15개</td><td>실측 조정</td></tr>
+        <tr><td>RSSI 샘플링 주기</td><td>500ms</td><td>조정 가능</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text3)">※ 모든 임계값은 관제 대시보드에서 원격 수정 가능하도록 설계됨</p>
+  </section>
+
+  <!-- 4. 페이로드 -->
+  <section id="payload">
+    <div class="section-tag">// 04</div>
+    <h2>페이로드 포맷</h2>
+    <p>LoRa Time on Air 단축을 위해 바이너리 구조체를 사용한다. JSON 대비 전송 시간이 대폭 줄어 CSMA/CA 채널 점유 시간도 감소한다.</p>
+
+    <div class="payload-visual">
+      <div class="pf sm"><span class="pf-name">robot_id</span><span class="pf-size">uint8 / 1B</span></div>
+      <div class="pf med"><span class="pf-name">seq</span><span class="pf-size">uint16 / 2B</span></div>
+      <div class="pf" style="flex:4"><span class="pf-name">ts</span><span class="pf-size">uint32 / 4B</span></div>
+      <div class="pf sm"><span class="pf-name">state</span><span class="pf-size">uint8 / 1B</span></div>
+      <div class="pf sm"><span class="pf-name">rssi</span><span class="pf-size">int8 / 1B</span></div>
+      <div class="pf med"><span class="pf-name">temp</span><span class="pf-size">int16 / 2B</span></div>
+    </div>
+
+    <table>
+      <thead><tr><th>필드</th><th>타입</th><th>크기</th><th>예시값</th><th>용도</th></tr></thead>
+      <tbody>
+        <tr><td>robot_id</td><td>uint8</td><td>1 byte</td><td>0x01</td><td>로봇 식별 / MQTT 토픽 구성</td></tr>
+        <tr><td>seq</td><td>uint16</td><td>2 byte</td><td>0x002A (42)</td><td>dedup / 손실 감지 / 순서 복원</td></tr>
+        <tr><td>ts</td><td>uint32</td><td>4 byte</td><td>Unix timestamp</td><td>발신 시각 기준 정렬</td></tr>
+        <tr><td>state</td><td>uint8</td><td>1 byte</td><td>0=N / 1=W / 2=L</td><td>FSM 현재 상태</td></tr>
+        <tr><td>rssi</td><td>int8</td><td>1 byte</td><td>−72</td><td>Wi-Fi RSSI (관제 모니터링)</td></tr>
+        <tr><td>temp</td><td>int16</td><td>2 byte</td><td>2350 = 23.50°C</td><td>온도값 (×100 정수 인코딩)</td></tr>
+        <tr><td colspan="5" style="color:var(--accent);text-align:center">총 헤더 고정 11 byte — LoRa 255 byte 한도 내 충분히 여유</td></tr>
+      </tbody>
+    </table>
+
+    <p>temp는 RPi CPU 온도(<code>/sys/class/thermal/thermal_zone0/temp</code>)를 읽으면 별도 센서 없이 즉시 사용 가능하다.</p>
+    <p>Wi-Fi 경로는 프로토타입 단계에서 JSON 사용 가능. LoRa 경로는 처음부터 바이너리 구조체 권장.</p>
+  </section>
+
+  <!-- 5. MQTT -->
+  <section id="mqtt">
+    <div class="section-tag">// 05</div>
+    <h2>MQTT 토픽 구조</h2>
+    <p>토픽 구조는 프로토콜과 무관하게 동일하다. publish 주체만 달라진다.</p>
+
+    <div class="topic-row">
+      <span class="topic-path">robot/{id}/status</span>
+      <span class="topic-desc">상태 데이터 업링크</span>
+      <span class="topic-who">publish: RPi (Wi-Fi) 또는 서버 C 브리지 (LoRa)</span>
+    </div>
+    <div class="topic-row">
+      <span class="topic-path">robot/+/status</span>
+      <span class="topic-desc">전체 로봇 통합 수신 (와일드카드)</span>
+      <span class="topic-who">subscribe: 서버 Python</span>
+    </div>
+    <div class="topic-row">
+      <span class="topic-path">robot/{id}/cmd</span>
+      <span class="topic-desc">관제 → 로봇 커맨드 다운링크</span>
+      <span class="topic-who">publish: 서버 Python / subscribe: RPi</span>
+    </div>
+
+    <h3>원격 수정 가능 파라미터</h3>
+    <table>
+      <thead><tr><th>파라미터</th><th>설명</th><th>적용 대상</th></tr></thead>
+      <tbody>
+        <tr><td>tx_power</td><td>LoRa 송신 출력 (2~20 dBm)</td><td>TTGO Arduino</td></tr>
+        <tr><td>t1_rssi</td><td>FSM T1 임계값</td><td>RPi FSM</td></tr>
+        <tr><td>t2_rssi</td><td>FSM T2 임계값</td><td>RPi FSM</td></tr>
+        <tr><td>stable_sec</td><td>안정화 판단 시간</td><td>RPi FSM</td></tr>
+        <tr><td>sample_n</td><td>안정화 샘플 수</td><td>RPi FSM</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 6. CSMA/CA -->
+  <section id="csma">
+    <div class="section-tag">// 06</div>
+    <h2>CSMA/CA (다중 로봇 충돌 회피)</h2>
+    <p>여러 로봇이 동시에 LoRa로 전환할 때 채널 충돌을 방지한다. sandeepmistry 라이브러리의 CAD(Channel Activity Detection) 기능이 하드웨어 레벨에서 지원된다.</p>
+
+    <div class="code-block"><span class="cm">// TTGO Arduino — CSMA/CA 흐름</span>
+<span class="fn">LoRa</span>.<span class="fn">onCadDone</span>(onCadDone);
+<span class="fn">LoRa</span>.<span class="fn">channelActivityDetection</span>();
+
+<span class="kw">void</span> <span class="fn">onCadDone</span>(<span class="nm">boolean</span> signalDetected) {
+  <span class="kw">if</span> (signalDetected) {
+    <span class="cm">// 채널 사용 중 → 랜덤 백오프 후 재시도</span>
+    delay(random(<span class="nm">10</span>, <span class="nm">50</span>));  <span class="cm">// robot_id 기반 시드 권장</span>
+    <span class="fn">LoRa</span>.<span class="fn">channelActivityDetection</span>();
+  } <span class="kw">else</span> {
+    <span class="cm">// 채널 비어있음 → 전송</span>
+    <span class="fn">sendPacket</span>();
+  }
+}</div>
+
+    <p>DIO0 핀(TTGO 기준 핀 26)이 인터럽트 가능 핀이므로 별도 하드웨어 수정 없이 바로 사용 가능하다.</p>
+
+    <h3>TDMA vs CSMA/CA 비교</h3>
+    <table>
+      <thead><tr><th></th><th>TDMA</th><th>CSMA/CA ✓ 채택</th></tr></thead>
+      <tbody>
+        <tr><td>방식</td><td>시간 슬롯 고정 배분</td><td>채널 비어있으면 전송</td></tr>
+        <tr><td>로봇 간 동기화</td><td>필요 (구현 복잡)</td><td>불필요</td></tr>
+        <tr><td>구현 난이도</td><td>높음</td><td>낮음</td></tr>
+        <tr><td>적합 상황</td><td>다수 로봇, 주기적 전송</td><td>소수 로봇, 비정기 전환</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 7. 기술 스택 -->
+  <section id="stack">
+    <div class="section-tag">// 07</div>
+    <h2>기술 스택</h2>
+    <table>
+      <thead><tr><th>장비</th><th>구성 요소</th><th>언어</th><th>주요 라이브러리</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>TTGO (로봇)</td><td>LoRa 송신 브리지</td>
+          <td><span class="tag tag-ard">Arduino C++</span></td>
+          <td>LoRa by Sandeep Mistry, SX1276</td>
+        </tr>
+        <tr>
+          <td>TTGO (서버)</td><td>LoRa 수신 전용</td>
+          <td><span class="tag tag-ard">Arduino C++</span></td>
+          <td>LoRa by Sandeep Mistry (수신만)</td>
+        </tr>
+        <tr>
+          <td>로봇 RPi</td><td>FSM + MQTT + UART</td>
+          <td><span class="tag tag-c">C</span></td>
+          <td>libmosquitto, termios.h, pthread</td>
+        </tr>
+        <tr>
+          <td>서버 PC</td><td>Mosquitto 브로커</td>
+          <td><span class="tag tag-c">C 데몬</span></td>
+          <td>mosquitto (apt)</td>
+        </tr>
+        <tr>
+          <td>서버 PC</td><td>LoRa UART → MQTT</td>
+          <td><span class="tag tag-c">C</span></td>
+          <td>libmosquitto, termios.h</td>
+        </tr>
+        <tr>
+          <td>서버 PC</td><td>MQTT → WebSocket</td>
+          <td><span class="tag tag-py">Python 3.11+</span></td>
+          <td>paho-mqtt, websockets / FastAPI</td>
+        </tr>
+        <tr>
+          <td>관제 PC</td><td>대시보드</td>
+          <td><span class="tag tag-ard">HTML / JS</span></td>
+          <td>WebSocket API (브라우저 내장)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>udev rule — 시리얼 포트 고정</h3>
+    <p>TTGO 두 개(로봇용, 서버용)의 USB 포트 번호가 재부팅 시 바뀌는 문제를 방지한다.</p>
+    <div class="code-block"><span class="cm"># /etc/udev/rules.d/99-lora.rules</span>
+<span class="cm"># 로봇 RPi 쪽</span>
+SUBSYSTEM==<span class="st">"tty"</span>, ATTRS{idVendor}==<span class="st">"10c4"</span>, ATTRS{serial}==<span class="st">"ABC123"</span>, SYMLINK+=<span class="st">"lora_robot"</span>
+
+<span class="cm"># 서버 PC 쪽</span>
+SUBSYSTEM==<span class="st">"tty"</span>, ATTRS{idVendor}==<span class="st">"10c4"</span>, ATTRS{serial}==<span class="st">"XYZ789"</span>, SYMLINK+=<span class="st">"lora_server"</span>
+
+<span class="cm"># 적용</span>
+sudo udevadm control --reload-rules</div>
+    <p>이후 코드에서 <code>/dev/lora_robot</code>, <code>/dev/lora_server</code>로 고정 참조 가능하다.</p>
+  </section>
+
+  <!-- 8. TTGO 펌웨어 -->
+  <section id="ttgo">
+    <div class="section-tag">// 08</div>
+    <h2>TTGO 펌웨어 설계</h2>
+
+    <h3>로봇용 TTGO (송신 브리지)</h3>
+    <table>
+      <thead><tr><th>단계</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>① UART 수신</td><td>RPi로부터 바이너리 패킷 수신 (\n 구분)</td></tr>
+        <tr><td>② CAD</td><td>LoRa.channelActivityDetection() 호출</td></tr>
+        <tr><td>③ 전송 또는 백오프</td><td>채널 비어있으면 전송, 사용 중이면 랜덤 백오프 후 재시도</td></tr>
+        <tr><td>④ TxDone 콜백</td><td>전송 완료 후 다음 패킷 대기</td></tr>
+      </tbody>
+    </table>
+
+    <h3>서버용 TTGO (수신 전용)</h3>
+    <table>
+      <thead><tr><th>단계</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>① 수신 대기</td><td>LoRa.receive() — 연속 수신 모드</td></tr>
+        <tr><td>② 패킷 수신</td><td>onReceive 콜백 — RSSI, SNR 함께 기록</td></tr>
+        <tr><td>③ UART 송출</td><td>바이너리 + RSSI/SNR → 서버 C 브리지로 전달</td></tr>
+        <tr><td>④ 송신 없음</td><td>송신 관련 코드 일절 없음 (채널 오염 방지)</td></tr>
+      </tbody>
+    </table>
+
+    <p>LoRa 파라미터: <code>915E6</code>, TxPower <code>20</code>, SyncWord <code>팀 전용값</code>, CRC 활성화 권장</p>
+  </section>
+
+  <!-- 9. RPi 클라이언트 -->
+  <section id="rpi">
+    <div class="section-tag">// 09</div>
+    <h2>로봇 RPi 구현 구조</h2>
+    <p>C로 구현. FSM 루프가 메인 스레드에서 돌고, Wi-Fi 상태일 때는 libmosquitto로 publish, LoRa 상태일 때는 termios UART로 TTGO에 패킷을 내려보낸다.</p>
+
+    <table>
+      <thead><tr><th>모듈</th><th>역할</th><th>구현 방법</th></tr></thead>
+      <tbody>
+        <tr><td>RSSI 모니터링</td><td>Wi-Fi 신호 세기 주기적 측정</td><td>subprocess → iw dev wlan0 link 파싱</td></tr>
+        <tr><td>FSM</td><td>상태 전환 판단 및 실행</td><td>enum + switch-case, 안정화 카운터</td></tr>
+        <tr><td>MQTT 클라이언트</td><td>Wi-Fi 경로 데이터 전송</td><td>libmosquitto (mosquitto_publish)</td></tr>
+        <tr><td>UART 제어</td><td>LoRa 경로 — TTGO 시리얼 송신</td><td>termios.h (/dev/lora_robot)</td></tr>
+        <tr><td>CMD 수신</td><td>관제 커맨드 수신 및 적용</td><td>mosquitto_subscribe (robot/A/cmd)</td></tr>
+        <tr><td>버퍼</td><td>전환 순간 패킷 임시 보관</td><td>메모리 링버퍼 (seq 순 flush)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 10. 서버 구조 -->
+  <section id="server">
+    <div class="section-tag">// 10</div>
+    <h2>서버 구조</h2>
+
+    <h3>C 브리지 프로세스</h3>
+    <table>
+      <thead><tr><th>단계</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>UART 수신</td><td>termios — /dev/lora_server에서 바이너리 패킷 수신</td></tr>
+        <tr><td>robot_id 파싱</td><td>구조체 첫 바이트에서 robot_id 추출</td></tr>
+        <tr><td>토픽 구성</td><td>sprintf("robot/%d/status", robot_id)</td></tr>
+        <tr><td>MQTT publish</td><td>libmosquitto → localhost:1883</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Python 프로세스</h3>
+    <table>
+      <thead><tr><th>단계</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>MQTT subscribe</td><td>paho-mqtt — robot/+/status 와일드카드</td></tr>
+        <tr><td>dedup</td><td>(robot_id, seq) 쌍 — 200ms 윈도우 내 중복 제거</td></tr>
+        <tr><td>WebSocket broadcast</td><td>연결된 모든 관제 브라우저에 JSON 전달</td></tr>
+        <tr><td>CMD 중계</td><td>브라우저 WebSocket → MQTT publish robot/{id}/cmd</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 11. 관제 대시보드 -->
+  <section id="dashboard">
+    <div class="section-tag">// 11</div>
+    <h2>관제 대시보드</h2>
+    <p>브라우저에서 HTML/JS로 동작. 별도 프로그램 설치 불필요.</p>
+
+    <h3>표시 항목</h3>
+    <table>
+      <thead><tr><th>항목</th><th>설명</th><th>출처</th></tr></thead>
+      <tbody>
+        <tr><td>FSM 상태</td><td>NORMAL / WARNING / LORA ONLY (색상 구분)</td><td>페이로드 state 필드</td></tr>
+        <tr><td>Wi-Fi RSSI</td><td>현재 신호 세기 (dBm)</td><td>페이로드 rssi 필드</td></tr>
+        <tr><td>LoRa 패킷 RSSI / SNR</td><td>LoRa 수신 품질</td><td>서버 TTGO packetRssi/SNR</td></tr>
+        <tr><td>온도</td><td>RPi CPU 온도 (°C)</td><td>페이로드 temp 필드</td></tr>
+        <tr><td>seq 연속성</td><td>패킷 손실 감지 (gap 표시)</td><td>페이로드 seq 필드</td></tr>
+        <tr><td>마지막 수신 시각</td><td>로봇별 최근 업데이트 시각</td><td>ts 필드</td></tr>
+      </tbody>
+    </table>
+
+    <h3>원격 수정 기능</h3>
+    <p>슬라이더 또는 입력창으로 아래 파라미터를 실시간 수정 가능. WebSocket → Python → MQTT → RPi → (필요 시) TTGO 순으로 전달된다.</p>
+    <table>
+      <thead><tr><th>파라미터</th><th>UI</th><th>범위</th></tr></thead>
+      <tbody>
+        <tr><td>TxPower</td><td>슬라이더</td><td>2 ~ 20 dBm</td></tr>
+        <tr><td>T1 (RSSI 임계값)</td><td>숫자 입력</td><td>−50 ~ −90 dBm</td></tr>
+        <tr><td>T2 (RSSI 임계값)</td><td>숫자 입력</td><td>−60 ~ −100 dBm</td></tr>
+        <tr><td>안정화 시간</td><td>숫자 입력</td><td>3 ~ 30초</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 12. 우려사항 -->
+  <section id="concerns">
+    <div class="section-tag">// 12</div>
+    <h2>우려사항 및 해결 방향</h2>
+
+    <div class="concern-grid">
+      <div class="concern-card resolved">
+        <div class="concern-num">W1</div>
+        <div class="concern-title">시리얼 포트 번호 불안정</div>
+        <div class="concern-desc">재부팅 또는 재연결 시 /dev/ttyUSB 번호가 변경될 수 있음</div>
+        <div class="concern-resolve">✓ 해결: udev rule로 /dev/lora_robot, /dev/lora_server 고정</div>
+      </div>
+      <div class="concern-card resolved">
+        <div class="concern-num">W2</div>
+        <div class="concern-title">전환 순간 데이터 유실</div>
+        <div class="concern-desc">FSM 전환 결정 시 전송 중이던 패킷 손실 가능</div>
+        <div class="concern-resolve">✓ 해결: 메모리 버퍼 + WARNING 구간 이중 채널 운용</div>
+      </div>
+      <div class="concern-card resolved">
+        <div class="concern-num">W3</div>
+        <div class="concern-title">Ping-pong 현상</div>
+        <div class="concern-desc">RSSI 임계값 근처에서 채널 전환 반복 발생 가능</div>
+        <div class="concern-resolve">✓ 해결: WARNING 구간 + 안정화 조건 충족 시에만 복귀 확정</div>
+      </div>
+      <div class="concern-card resolved">
+        <div class="concern-num">W4</div>
+        <div class="concern-title">C ↔ Python 프로세스 타이밍</div>
+        <div class="concern-desc">두 프로세스 간 지연 발생 가능성</div>
+        <div class="concern-resolve">✓ 해결: localhost 통신으로 무시할 수준. 실측 후 문제 시 대응</div>
+      </div>
+      <div class="concern-card resolved">
+        <div class="concern-num">W5</div>
+        <div class="concern-title">robot_id 식별 불가</div>
+        <div class="concern-desc">LoRa 패킷에서 누구한테서 온 데이터인지 알 수 없음</div>
+        <div class="concern-resolve">✓ 해결: 페이로드 첫 바이트에 robot_id 항상 포함</div>
+      </div>
+      <div class="concern-card resolved">
+        <div class="concern-num">W6</div>
+        <div class="concern-title">다중 로봇 LoRa 채널 충돌</div>
+        <div class="concern-desc">여러 로봇이 동시 LoRa 전환 시 패킷 충돌 가능</div>
+        <div class="concern-resolve">✓ 해결: CSMA/CA + CAD 하드웨어 지원 + 랜덤 백오프</div>
+      </div>
+      <div class="concern-card resolved">
+        <div class="concern-num">W7</div>
+        <div class="concern-title">서버 TTGO 채널 오염</div>
+        <div class="concern-desc">서버 TTGO가 엉뚱하게 송신하면 채널 오염 발생</div>
+        <div class="concern-resolve">✓ 해결: 서버 TTGO 펌웨어에 송신 코드 일절 없음</div>
+      </div>
+      <div class="concern-card resolved">
+        <div class="concern-num">W8</div>
+        <div class="concern-title">WARNING 구간 중복 수신</div>
+        <div class="concern-desc">Wi-Fi + LoRa 동시 활성 시 같은 패킷이 두 번 도착</div>
+        <div class="concern-resolve">✓ 해결: (robot_id, seq) 쌍 기반 dedup — 200ms 윈도우</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13. 실측 항목 -->
+  <section id="todo">
+    <div class="section-tag">// 13</div>
+    <h2>실측 필요 항목</h2>
+    <p>시스템 구현 후 실측으로 도출해야 하는 수치들. 관제 대시보드에서 원격 수정 가능하도록 설계되어 있으므로 코드 재배포 없이 튜닝 가능하다.</p>
+
+    <table>
+      <thead><tr><th>항목</th><th>초기값</th><th>측정 방법</th></tr></thead>
+      <tbody>
+        <tr><td>T1 RSSI 임계값</td><td>−65 dBm</td><td>로봇을 AP에서 멀어지며 신호 저하 구간 측정</td></tr>
+        <tr><td>T2 RSSI 임계값</td><td>−80 dBm</td><td>완전 끊김 직전 구간 측정</td></tr>
+        <tr><td>TTGO 웨이크업 시간</td><td>미정</td><td>Sleep → 첫 패킷 전송까지 소요 시간 측정</td></tr>
+        <tr><td>안정화 조건 수치</td><td>10초 / 20샘플 / 15개</td><td>핑퐁 없이 안정 복귀되는 최소 조건 탐색</td></tr>
+        <tr><td>LoRa Time on Air</td><td>~200ms (SF7 기준)</td><td>실제 환경에서 전송 시간 측정</td></tr>
+        <tr><td>CSMA/CA 백오프 범위</td><td>10~50ms</td><td>로봇 N대 동시 전환 시 충돌률 측정</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+</body>
+</html>
