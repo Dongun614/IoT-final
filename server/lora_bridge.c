@@ -2,6 +2,11 @@
  * lora_bridge.c
  * 서버용 TTGO UART → Mosquitto MQTT 브리지
  *
+ * server.ino 출력 포맷 (JSON 라인):
+ *   {"type":"rx","rssi":-72,"snr":8.5,"len":11,"data":"0102aabbcc..."}
+ *   {"type":"ready","role":"server"}   ← 무시
+ *   {"type":"error","msg":"..."}       ← stderr 출력
+ *
  * 빌드: gcc -o lora_bridge lora_bridge.c -lmosquitto
  * 실행: ./lora_bridge /dev/lora_server
  *       (udev rule 미설정 시: ./lora_bridge /dev/ttyUSB0)
@@ -11,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
@@ -48,18 +54,8 @@ typedef struct {
 } RobotPayload;
 #pragma pack(pop)
 
-/* TTGO가 앞에 붙여주는 헤더 + LoRa 신호 품질 */
-#pragma pack(push, 1)
-typedef struct {
-    uint8_t      magic;       /* 0xAA */
-    RobotPayload payload;
-    int8_t       lora_rssi;
-    int8_t       lora_snr;
-} UartFrame;
-#pragma pack(pop)
-
-#define FRAME_SIZE   sizeof(UartFrame)   /* 14 byte */
-#define MAGIC_BYTE   0xAA
+/* UART 라인 버퍼 크기 */
+#define LINE_BUF_SIZE  512
 
 /* ─── 전역 ─────────────────────────────────────────── */
 static volatile int g_running = 1;
@@ -130,23 +126,119 @@ static void on_disconnect(struct mosquitto *mosq, void *obj, int rc) {
     }
 }
 
-/* ─── 패킷 파싱 및 MQTT publish ─────────────────────── */
-static void process_frame(const UartFrame *f) {
-    const RobotPayload *p = &f->payload;
+/* ─── hex 문자열 → 바이너리 디코딩 ─────────────────── */
+/* hex: "0102aabb..." , out: 바이너리 버퍼, max_len: 버퍼 크기
+ * 반환: 디코딩된 바이트 수, 실패 시 -1 */
+static int hex_decode(const char *hex, uint8_t *out, int max_len) {
+    int len = (int)strlen(hex);
+    if (len % 2 != 0) return -1;
+    int n = len / 2;
+    if (n > max_len) return -1;
+    for (int i = 0; i < n; i++) {
+        unsigned int byte;
+        if (sscanf(hex + i * 2, "%02x", &byte) != 1) return -1;
+        out[i] = (uint8_t)byte;
+    }
+    return n;
+}
 
-    /* JSON 문자열로 변환 (Python 쪽에서 쉽게 파싱하도록) */
+/* ─── JSON 라인에서 값 추출 (외부 라이브러리 없이) ──── */
+/* {"key":value} 에서 정수/실수 값 추출.
+ * 반환: 1=성공, 0=키 없음 */
+static int json_get_int(const char *json, const char *key, long *out) {
+    char search[64];
+    snprintf(search, sizeof(search), "\"%s\":", key);
+    const char *p = strstr(json, search);
+    if (!p) return 0;
+    p += strlen(search);
+    while (*p == ' ') p++;
+    char *end;
+    *out = strtol(p, &end, 10);
+    return (end != p) ? 1 : 0;
+}
+
+static int json_get_float(const char *json, const char *key, float *out) {
+    char search[64];
+    snprintf(search, sizeof(search), "\"%s\":", key);
+    const char *p = strstr(json, search);
+    if (!p) return 0;
+    p += strlen(search);
+    while (*p == ' ') p++;
+    char *end;
+    *out = strtof(p, &end);
+    return (end != p) ? 1 : 0;
+}
+
+/* "data":"hexstring" 에서 hex 문자열 추출 */
+static int json_get_str(const char *json, const char *key, char *out, int max_len) {
+    char search[64];
+    snprintf(search, sizeof(search), "\"%s\":\"", key);
+    const char *p = strstr(json, search);
+    if (!p) return 0;
+    p += strlen(search);
+    int i = 0;
+    while (*p && *p != '"' && i < max_len - 1)
+        out[i++] = *p++;
+    out[i] = '\0';
+    return i;
+}
+
+/* ─── JSON 라인 파싱 + 페이로드 디코딩 + MQTT publish ── */
+static void process_line(const char *line) {
+    /* type 필드 확인 */
+    if (strstr(line, "\"type\":\"ready\"")) {
+        printf("[bridge] TTGO 준비 완료: %s\n", line);
+        return;
+    }
+    if (strstr(line, "\"type\":\"error\"")) {
+        fprintf(stderr, "[bridge] TTGO 오류: %s\n", line);
+        return;
+    }
+    if (!strstr(line, "\"type\":\"rx\"")) {
+        /* rx 이외 메시지 무시 */
+        return;
+    }
+
+    /* rssi, snr 추출 */
+    long  lora_rssi_l = 0;
+    float lora_snr    = 0.0f;
+    json_get_int  (line, "rssi", &lora_rssi_l);
+    json_get_float(line, "snr",  &lora_snr);
+    int8_t lora_rssi = (int8_t)lora_rssi_l;
+
+    /* data hex 문자열 추출 */
+    char hex[512] = {0};
+    if (json_get_str(line, "data", hex, sizeof(hex)) <= 0) {
+        fprintf(stderr, "[bridge] data 필드 없음: %s\n", line);
+        return;
+    }
+
+    /* hex → 바이너리 */
+    uint8_t raw[256];
+    int raw_len = hex_decode(hex, raw, sizeof(raw));
+    if (raw_len < (int)sizeof(RobotPayload)) {
+        fprintf(stderr, "[bridge] 페이로드 길이 부족: %d bytes (필요: %d)\n",
+                raw_len, (int)sizeof(RobotPayload));
+        return;
+    }
+
+    /* 바이너리 → RobotPayload (little-endian, packed) */
+    RobotPayload p;
+    memcpy(&p, raw, sizeof(RobotPayload));
+
+    /* MQTT publish용 JSON 생성 */
     char json[256];
     snprintf(json, sizeof(json),
         "{\"robot_id\":%d,\"seq\":%d,\"ts\":%u,"
         "\"state\":%d,\"wifi_rssi\":%d,\"temp\":%.2f,"
-        "\"lora_rssi\":%d,\"lora_snr\":%d}",
-        p->robot_id, p->seq, p->ts,
-        p->state, p->wifi_rssi, p->temp / 100.0f,
-        f->lora_rssi, f->lora_snr
+        "\"lora_rssi\":%d,\"lora_snr\":%.1f}",
+        p.robot_id, p.seq, p.ts,
+        p.state, p.wifi_rssi, p.temp / 100.0f,
+        lora_rssi, lora_snr
     );
 
     char topic[TOPIC_BUF];
-    snprintf(topic, sizeof(topic), TOPIC_FMT, p->robot_id);
+    snprintf(topic, sizeof(topic), TOPIC_FMT, p.robot_id);
 
     int ret = mosquitto_publish(g_mosq, NULL, topic,
                                 (int)strlen(json), json, 0, false);
@@ -154,10 +246,10 @@ static void process_frame(const UartFrame *f) {
         fprintf(stderr, "[bridge] MQTT publish 실패: %s\n", mosquitto_strerror(ret));
     } else {
         const char *state_str[] = {"NORMAL", "WARNING", "LORA_ONLY"};
-        printf("[bridge] → %s | seq=%d state=%s wifi_rssi=%d lora_rssi=%d temp=%.2f\n",
-               topic, p->seq,
-               p->state < 3 ? state_str[p->state] : "?",
-               p->wifi_rssi, f->lora_rssi, p->temp / 100.0f);
+        printf("[bridge] → %s | seq=%d state=%s wifi_rssi=%d lora_rssi=%d snr=%.1f temp=%.2f\n",
+               topic, p.seq,
+               p.state < 3 ? state_str[p.state] : "?",
+               p.wifi_rssi, lora_rssi, lora_snr, p.temp / 100.0f);
     }
 }
 
@@ -198,9 +290,9 @@ int main(int argc, char *argv[]) {
     printf("[bridge] 시작. UART=%s → MQTT %s:%d\n", uart_dev, MQTT_HOST, MQTT_PORT);
     printf("[bridge] 종료: Ctrl+C\n");
 
-    /* ── UART 수신 루프 ── */
-    uint8_t buf[256];
-    int     buf_len = 0;
+    /* ── UART 수신 루프 — '\n' 단위 JSON 라인 ── */
+    char line[LINE_BUF_SIZE];
+    int  line_len = 0;
 
     while (g_running) {
         uint8_t byte;
@@ -212,20 +304,26 @@ int main(int argc, char *argv[]) {
         }
         if (n == 0) continue;
 
-        /* 매직 바이트로 프레임 시작 탐지 */
-        if (buf_len == 0 && byte != MAGIC_BYTE) continue;
+        if (byte == '\r') continue;  /* CR 무시 */
 
-        buf[buf_len++] = byte;
-
-        /* 프레임 완성 */
-        if (buf_len == (int)FRAME_SIZE) {
-            UartFrame *frame = (UartFrame *)buf;
-            process_frame(frame);
-            buf_len = 0;
+        if (byte == '\n') {
+            /* 라인 완성 → 파싱 */
+            if (line_len > 0) {
+                line[line_len] = '\0';
+                process_line(line);
+            }
+            line_len = 0;
+            continue;
         }
 
-        /* 버퍼 오버플로 방지 */
-        if (buf_len >= (int)sizeof(buf)) buf_len = 0;
+        /* 라인 버퍼에 추가 */
+        if (line_len < (int)sizeof(line) - 1) {
+            line[line_len++] = (char)byte;
+        } else {
+            /* 버퍼 오버플로 — 라인 버림 */
+            fprintf(stderr, "[bridge] 라인 버퍼 오버플로, 버림\n");
+            line_len = 0;
+        }
     }
 
     printf("[bridge] 종료 중...\n");
