@@ -24,7 +24,8 @@ import logging
 from datetime import datetime
 
 import websockets
-from websockets.server import WebSocketServerProtocol
+import websockets.asyncio.server
+from websockets.asyncio.server import ServerConnection
 
 try:
     import serial
@@ -58,7 +59,7 @@ STATE_NUM    = {'NORMAL': 0, 'WARNING': 1, 'LORA': 2}
 STATE_NAME   = {0: 'NORMAL', 1: 'WARNING', 2: 'LORA_ONLY'}
 
 # ─── 공유 상태 ──────────────────────────────────────────
-connected_ws: set[WebSocketServerProtocol] = set()
+connected_ws: set[ServerConnection] = set()
 last_status:  dict[int, dict] = {}        # robot_id → 마지막 상태 (스냅샷용)
 robot_addrs:  dict[int, str]  = {}        # robot_id → IP (CMD 역방향용)
 
@@ -83,6 +84,7 @@ def _is_dup(robot_id: int, seq: int) -> bool:
 
 # ─── WebSocket 브로드캐스트 ──────────────────────────────
 async def broadcast(message: str):
+    global connected_ws
     if not connected_ws:
         return
     dead = set()
@@ -97,7 +99,13 @@ def broadcast_from_thread(data: dict):
     """스레드(wifi/lora)에서 asyncio broadcast 호출"""
     if _loop and not _loop.is_closed():
         msg = json.dumps({'type': 'status', 'data': data})
-        asyncio.run_coroutine_threadsafe(broadcast(msg), _loop)
+        future = asyncio.run_coroutine_threadsafe(broadcast(msg), _loop)
+        try:
+            future.result(timeout=1.0)
+        except Exception as e:
+            log.error(f'broadcast error: {e}')
+    else:
+        log.warning('loop not ready')
 
 # ─── 패킷 처리 공통 ─────────────────────────────────────
 _last_seq: dict[int, int] = {}
@@ -245,7 +253,7 @@ def send_cmd_to_robot(robot_id: int, payload: dict):
         log.error(f'CMD 전송 오류: {e}')
 
 # ─── WebSocket 핸들러 ────────────────────────────────────
-async def ws_handler(ws: WebSocketServerProtocol):
+async def ws_handler(ws: ServerConnection):
     addr = ws.remote_address
     log.info(f'관제 접속: {addr}')
     connected_ws.add(ws)
@@ -282,14 +290,9 @@ async def main(args):
     global _loop
     _loop = asyncio.get_running_loop()
 
-    ws_server = await websockets.serve(ws_handler, WS_HOST, args.ws_port)
-    log.info(f'WebSocket 서버 시작: ws://{WS_HOST}:{args.ws_port}')
-
-    try:
+    async with websockets.asyncio.server.serve(ws_handler, WS_HOST, args.ws_port) as ws_server:
+        log.info(f'WebSocket 서버 시작: ws://{WS_HOST}:{args.ws_port}')
         await asyncio.Future()
-    finally:
-        ws_server.close()
-        await ws_server.wait_closed()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='통합 서버 (Wi-Fi UDP + LoRa UART + WebSocket)')
