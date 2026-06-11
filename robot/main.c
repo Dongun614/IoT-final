@@ -206,6 +206,88 @@ static int16_t read_temp(void) {
     return (int16_t)(millideg / 10);
 }
 
+/* ------------------------------------------------------------------ CMD */
+
+#define CMD_LISTEN_PORT 5001
+
+typedef struct { fsm_t *fsm; uart_t *uart; } cmd_arg_t;
+
+static void apply_cmd(fsm_t *fsm, uart_t *uart, const char *json) {
+    /* 간단한 키-값 파싱 (jsmn 없이 sscanf로 처리) */
+    int val;
+    const char *p;
+
+    if ((p = strstr(json, "\"tx_power\"")) &&
+        sscanf(p + 10, ":%d", &val) == 1) {
+        if (val < 2)  val = 2;
+        if (val > 20) val = 20;
+        if (uart->fd >= 0) {
+            uint8_t buf[3] = { UART_CMD_TXPOW, (uint8_t)val, '\n' };
+            uart_write_all(uart, buf, 3);
+        }
+        fprintf(stderr, "[CMD] tx_power → %d dBm\n", val);
+    }
+
+    if ((p = strstr(json, "\"t1_rssi\"")) &&
+        sscanf(p + 9, ":%d", &val) == 1) {
+        fsm->params.t1_rssi = (int8_t)val;
+        fprintf(stderr, "[CMD] T1 → %d dBm\n", val);
+    }
+    if ((p = strstr(json, "\"t2_rssi\"")) &&
+        sscanf(p + 9, ":%d", &val) == 1) {
+        fsm->params.t2_rssi = (int8_t)val;
+        fprintf(stderr, "[CMD] T2 → %d dBm\n", val);
+    }
+    if ((p = strstr(json, "\"stable_sec\"")) &&
+        sscanf(p + 12, ":%d", &val) == 1) {
+        fsm->params.stable_sec = val;
+        fprintf(stderr, "[CMD] stable_sec → %d s\n", val);
+    }
+}
+
+static pthread_mutex_t g_fsm_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+static void *cmd_thread(void *arg) {
+    cmd_arg_t *a   = (cmd_arg_t *)arg;
+    fsm_t     *fsm = a->fsm;
+    uart_t    *uart = a->uart;
+
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) { perror("[CMD] socket"); return NULL; }
+
+    int reuse = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family      = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port        = htons(CMD_LISTEN_PORT);
+
+    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("[CMD] bind"); close(sock); return NULL;
+    }
+
+    struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    fprintf(stderr, "[CMD] UDP 수신 대기 :%d\n", CMD_LISTEN_PORT);
+
+    char buf[512];
+    while (g_running) {
+        ssize_t n = recv(sock, buf, sizeof(buf) - 1, 0);
+        if (n <= 0) continue;
+        buf[n] = '\0';
+        fprintf(stderr, "[CMD] 수신: %s\n", buf);
+        pthread_mutex_lock(&g_fsm_mtx);
+        apply_cmd(fsm, uart, buf);
+        pthread_mutex_unlock(&g_fsm_mtx);
+    }
+
+    close(sock);
+    return NULL;
+}
+
 typedef struct { fsm_t *fsm; } stdin_arg_t;
 
 static void *stdin_thread(void *arg) {
@@ -224,10 +306,14 @@ static void *stdin_thread(void *arg) {
             pthread_mutex_unlock(&g_mock_mtx);
             fprintf(stderr, "[MOCK] disabled, using real RSSI\n");
         } else if (sscanf(line, "t1 %d", &val) == 1) {
+            pthread_mutex_lock(&g_fsm_mtx);
             fsm->params.t1_rssi = (int8_t)val;
+            pthread_mutex_unlock(&g_fsm_mtx);
             fprintf(stderr, "[FSM] T1 → %d dBm\n", val);
         } else if (sscanf(line, "t2 %d", &val) == 1) {
+            pthread_mutex_lock(&g_fsm_mtx);
             fsm->params.t2_rssi = (int8_t)val;
+            pthread_mutex_unlock(&g_fsm_mtx);
             fprintf(stderr, "[FSM] T2 → %d dBm\n", val);
         } else if (strncmp(line, "quit", 4) == 0) {
             g_running = 0;
@@ -359,6 +445,10 @@ int main(int argc, char **argv) {
     pthread_t tid;
     pthread_create(&tid, NULL, stdin_thread, &sarg);
 
+    cmd_arg_t carg = { .fsm = &fsm, .uart = &uart };
+    pthread_t cmd_tid;
+    pthread_create(&cmd_tid, NULL, cmd_thread, &carg);
+
     fprintf(stderr,
         "[ROBOT] id=%u  T1=%d T2=%d dBm  stable=%ds/%d/%d\n"
         "[ROBOT] stdin: \"rssi -85\" to force LORA, \"rssi -50\" to recover\n",
@@ -376,7 +466,9 @@ int main(int argc, char **argv) {
 
         int8_t      rssi    = rssi_read();
         int         wifi_up = rssi_wifi_connected();
+        pthread_mutex_lock(&g_fsm_mtx);
         fsm_state_t state   = fsm_update(&fsm, rssi, wifi_up);
+        pthread_mutex_unlock(&g_fsm_mtx);
         tx_path_t   path    = decide_path(state, wifi_up);
 
         if (state != prev_state) {
@@ -438,6 +530,7 @@ int main(int argc, char **argv) {
     uart_close(&uart);
     g_running = 0;
     pthread_join(tid, NULL);
+    pthread_join(cmd_tid, NULL);
     fprintf(stderr, "[ROBOT] stopped. sent %u packets total.\n", seq);
     return 0;
 }
